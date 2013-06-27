@@ -37,6 +37,7 @@
 #include <linux/rculist_bl.h>
 #include <linux/prefetch.h>
 #include <linux/ratelimit.h>
+#include <linux/lcd_notify.h>
 #include "internal.h"
 #include "mount.h"
 
@@ -78,7 +79,10 @@
  *   dentry1->d_lock
  *     dentry2->d_lock
  */
-int sysctl_vfs_cache_pressure __read_mostly = 100;
+#define DEFAULT_VFS_CACHE_PRESSURE 65
+    int sysctl_vfs_cache_pressure __read_mostly, resume_cache_pressure;
+    int suspend_cache_pressure = 10;
+
 EXPORT_SYMBOL_GPL(sysctl_vfs_cache_pressure);
 
 static __cacheline_aligned_in_smp DEFINE_SPINLOCK(dcache_lru_lock);
@@ -2997,6 +3001,31 @@ ino_t find_inode_number(struct dentry *dir, struct qstr *name)
 }
 EXPORT_SYMBOL(find_inode_number);
 
+struct notifier_block notif;
+
+static int cpressure_suspend(struct notifier_block *this,
+        unsigned long event, void *data)
+{
+    switch (event) {
+    case LCD_EVENT_ON_START:
+        sysctl_vfs_cache_pressure = resume_cache_pressure;
+        break;
+    case LCD_EVENT_ON_END:
+        break;
+    case LCD_EVENT_OFF_START:
+        if (sysctl_vfs_cache_pressure != resume_cache_pressure)
+            resume_cache_pressure = sysctl_vfs_cache_pressure;
+
+            sysctl_vfs_cache_pressure = suspend_cache_pressure;
+        break;
+    case LCD_EVENT_OFF_END:
+        break;
+    default:
+        break;
+    }
+return 0;
+}
+
 static __initdata unsigned long dhash_entries;
 static int __init set_dhash_entries(char *str)
 {
@@ -3069,6 +3098,9 @@ EXPORT_SYMBOL(d_genocide);
 
 void __init vfs_caches_init_early(void)
 {
+    sysctl_vfs_cache_pressure = resume_cache_pressure =
+        DEFAULT_VFS_CACHE_PRESSURE;
+
 	dcache_init_early();
 	inode_init_early();
 }
@@ -3092,4 +3124,9 @@ void __init vfs_caches_init(unsigned long mempages)
 	mnt_init();
 	bdev_cache_init();
 	chrdev_init();
+
+    notif.notifier_call = cpressure_suspend;
+
+    if (lcd_register_client(&notif))
+        printk("[dynamic_vsfcache] error\n");
 }
