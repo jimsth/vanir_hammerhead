@@ -154,7 +154,7 @@ enum pgd_reg_v1 {
 
 enum msm_ctrl_state {
 	MSM_CTRL_AWAKE,
-	MSM_CTRL_SLEEPING,
+	MSM_CTRL_IDLE,
 	MSM_CTRL_ASLEEP,
 	MSM_CTRL_DOWN,
 };
