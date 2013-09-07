@@ -791,6 +791,7 @@ int mdss_mdp_ctl_setup(struct mdss_mdp_ctl *ctl)
 
 	ctl->width = width;
 	ctl->height = height;
+	ctl->roi = (struct mdss_mdp_img_rect) {0, 0, width, height};
 
 	if (!ctl->mixer_left) {
 		ctl->mixer_left =
@@ -809,6 +810,7 @@ int mdss_mdp_ctl_setup(struct mdss_mdp_ctl *ctl)
 
 	ctl->mixer_left->width = width;
 	ctl->mixer_left->height = height;
+	ctl->mixer_left->roi = (struct mdss_mdp_img_rect) {0, 0, width, height};
 
 	if (split_ctl) {
 		pr_debug("split display detected\n");
@@ -831,6 +833,8 @@ int mdss_mdp_ctl_setup(struct mdss_mdp_ctl *ctl)
 		}
 		ctl->mixer_right->width = width;
 		ctl->mixer_right->height = height;
+		ctl->mixer_right->roi = (struct mdss_mdp_img_rect)
+						{0, 0, width, height};
 	} else if (ctl->mixer_right) {
 		mdss_mdp_mixer_free(ctl->mixer_right);
 		ctl->mixer_right = NULL;
@@ -1302,6 +1306,48 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl)
 	return ret;
 }
 
+void mdss_mdp_set_roi(struct mdss_mdp_ctl *ctl,
+		struct mdp_display_commit *data)
+{
+	struct mdss_mdp_img_rect temp_roi, mixer_roi;
+
+	temp_roi.x = data->roi.x;
+	temp_roi.y = data->roi.y;
+	temp_roi.w = data->roi.w;
+	temp_roi.h = data->roi.h;
+
+	/*
+	 * No Partial Update for:
+	 * 1) dual DSI panels
+	 * 2) non-cmd mode panels
+	*/
+	if (!temp_roi.w || !temp_roi.h || ctl->mixer_right ||
+			(ctl->panel_data->panel_info.type != MIPI_CMD_PANEL) ||
+			!ctl->panel_data->panel_info.partial_update_enabled) {
+		temp_roi = (struct mdss_mdp_img_rect)
+				{0, 0, ctl->mixer_left->width,
+					ctl->mixer_left->height};
+	}
+
+	ctl->roi_changed = 0;
+	if (((temp_roi.x != ctl->roi.x) ||
+			(temp_roi.y != ctl->roi.y)) ||
+			((temp_roi.w != ctl->roi.w) ||
+			 (temp_roi.h != ctl->roi.h))) {
+		ctl->roi = temp_roi;
+		ctl->roi_changed++;
+
+		mixer_roi = ctl->mixer_left->roi;
+		if ((mixer_roi.w != temp_roi.w) ||
+			(mixer_roi.h != temp_roi.h)) {
+			ctl->mixer_left->roi = temp_roi;
+			ctl->mixer_left->params_changed++;
+		}
+	}
+	pr_debug("ROI requested: [%d, %d, %d, %d]\n",
+			ctl->roi.x, ctl->roi.y, ctl->roi.w, ctl->roi.h);
+}
+
 /*
  * mdss_mdp_ctl_reset() - reset mdp ctl path.
  * @ctl: mdp controller.
@@ -1312,29 +1358,29 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl)
  */
 int mdss_mdp_ctl_reset(struct mdss_mdp_ctl *ctl)
 {
-	u32 status = 1;
-	int cnt = 20;
+    u32 status = 1;
+    int cnt = 20;
 
-	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_SW_RESET, 1);
+    mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_SW_RESET, 1);
 
-	/*
-	 * it takes around 30us to have mdp finish resetting its ctl path
-	 * poll every 50us so that reset should be completed at 1st poll
-	 */
+    /*
+     * it takes around 30us to have mdp finish resetting its ctl path
+     * poll every 50us so that reset should be completed at 1st poll
+     */
 
-	do {
-		udelay(50);
-		status = mdss_mdp_ctl_read(ctl, MDSS_MDP_REG_CTL_SW_RESET);
-		status &= 0x01;
-		pr_debug("status=%x\n", status);
-		cnt--;
-		if (cnt == 0) {
-			pr_err("timeout\n");
-			return -EAGAIN;
-		}
-	} while (status);
+    do {
+        udelay(50);
+        status = mdss_mdp_ctl_read(ctl, MDSS_MDP_REG_CTL_SW_RESET);
+        status &= 0x01;
+        pr_debug("status=%x\n", status);
+        cnt--;
+        if (cnt == 0) {
+            pr_err("timeout\n");
+            return -EAGAIN;
+        }
+    } while (status);
 
-	return 0;
+    return 0;
 }
 
 static int mdss_mdp_mixer_setup(struct mdss_mdp_ctl *ctl,
@@ -1345,11 +1391,15 @@ static int mdss_mdp_mixer_setup(struct mdss_mdp_ctl *ctl,
 	u32 mixercfg = 0, blend_color_out = 0, bg_alpha_enable = 0;
 	u32 fg_alpha = 0, bg_alpha = 0;
 	int stage, secure = 0;
+	int outsize = 0;
 
 	if (!mixer)
 		return -ENODEV;
 
 	pr_debug("setup mixer=%d\n", mixer->num);
+
+	outsize = (mixer->roi.h << 16) | mixer->roi.w;
+	mdp_mixer_write(mixer, MDSS_MDP_REG_LM_OUT_SIZE, outsize);
 
 	pipe = mixer->stage_pipe[MDSS_MDP_STAGE_BASE];
 	if (pipe == NULL) {
