@@ -92,7 +92,8 @@ struct msm_mdp_interface {
 	int (*off_fnc)(struct msm_fb_data_type *mfd);
 	/* called to release resources associated to the process */
 	int (*release_fnc)(struct msm_fb_data_type *mfd, bool release_all);
-	int (*kickoff_fnc)(struct msm_fb_data_type *mfd);
+	int (*kickoff_fnc)(struct msm_fb_data_type *mfd,
+					struct mdp_display_commit *data);
 	int (*ioctl_handler)(struct msm_fb_data_type *mfd, u32 cmd, void *arg);
 	void (*dma_fnc)(struct msm_fb_data_type *mfd, struct mdp_overlay *req,
 				int image_len, int *pipe_ndx);
