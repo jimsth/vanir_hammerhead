@@ -33,8 +33,8 @@ static int __init readahead(char *str)
 	if (bytes) {
 		if (bytes < PAGE_CACHE_SIZE)	/* missed 'k'/'m' suffixes? */
 			return -EINVAL;
-		if (bytes > 128 << 20)		/* limit to 128MB */
-			bytes = 128 << 20;
+        if (bytes > 256 << 20)       /* limit to 256MB */
+            bytes = 256 << 20;;
 	}
 
 	max_readahead_pages = bytes / PAGE_CACHE_SIZE;
