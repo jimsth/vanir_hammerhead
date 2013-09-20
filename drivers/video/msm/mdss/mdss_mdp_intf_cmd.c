@@ -475,10 +475,28 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	return rc;
 }
 
+static int mdss_mdp_cmd_set_partial_roi(struct mdss_mdp_ctl *ctl,
+		struct mdss_mdp_img_rect *roi)
+{
+	int rc = 0;
+	if (roi->w && roi->h &&
+			ctl->panel_data->panel_info.partial_update_enabled) {
+		ctl->panel_data->panel_info.roi_x = roi->x;
+		ctl->panel_data->panel_info.roi_y = roi->y;
+		ctl->panel_data->panel_info.roi_w = roi->w;
+		ctl->panel_data->panel_info.roi_h = roi->h;
+
+		rc = mdss_mdp_ctl_intf_event(ctl,
+				MDSS_EVENT_ENABLE_PARTIAL_UPDATE, NULL);
+	}
+	return rc;
+}
+
 int mdss_mdp_cmd_kickoff(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_cmd_ctx *ctx;
 	unsigned long flags;
+	struct mdss_mdp_img_rect roi;
 	int rc;
 
 	ctx = (struct mdss_mdp_cmd_ctx *) ctl->priv_data;
@@ -500,6 +518,9 @@ int mdss_mdp_cmd_kickoff(struct mdss_mdp_ctl *ctl, void *arg)
 	spin_lock_irqsave(&ctx->clk_lock, flags);
 	ctx->koff_cnt++;
 	spin_unlock_irqrestore(&ctx->clk_lock, flags);
+
+	roi = (struct mdss_mdp_img_rect){0, 0, ctl->width, ctl->height};
+	mdss_mdp_cmd_set_partial_roi(ctl, &roi);
 
 	mdss_mdp_cmd_clk_on(ctx);
 
