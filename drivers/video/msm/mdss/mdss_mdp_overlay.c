@@ -870,9 +870,6 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 	mutex_lock(&mdp5_data->ov_lock);
 	mutex_lock(&mfd->lock);
 
-	mdss_mdp_ctl_notify(ctl, MDP_NOTIFY_FRAME_BEGIN);
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
-
 	/*
 	 * Setup pipe in solid fill before unstaging,
 	 * to ensure no fetches are happening after dettach or reattach.
@@ -881,6 +878,9 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 		mdss_mdp_pipe_queue_data(pipe, NULL);
 		mdss_mdp_mixer_pipe_unstage(pipe);
 	}
+
+    mdss_mdp_ctl_notify(ctl, MDP_NOTIFY_FRAME_BEGIN);
+    mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 
 	list_for_each_entry(pipe, &mdp5_data->pipes_used, used_list) {
 		struct mdss_mdp_data *buf;
@@ -2573,6 +2573,7 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 			goto init_fail;
 		}
 	}
+	mfd->mdp_sync_pt_data.async_wait_fences = true;
 
 	pm_runtime_set_suspended(&mfd->pdev->dev);
 	pm_runtime_enable(&mfd->pdev->dev);
