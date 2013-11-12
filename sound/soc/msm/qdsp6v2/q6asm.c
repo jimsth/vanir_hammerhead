@@ -1908,7 +1908,7 @@ int q6asm_open_read_write(struct audio_client *ac,
 	struct asm_stream_cmd_open_readwrite_v2 open;
 
 	if ((ac == NULL) || (ac->apr == NULL)) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: session[%d]", __func__, ac->session);
@@ -2063,7 +2063,7 @@ int q6asm_run(struct audio_client *ac, uint32_t flags,
 	struct asm_session_cmd_run_v2 run;
 	int rc;
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s session[%d]", __func__, ac->session);
@@ -2994,7 +2994,7 @@ int q6asm_memory_map(struct audio_client *ac, uint32_t buf_add, int dir,
 	int	cmd_size = 0;
 
 	if (!ac || ac->apr == NULL || ac->mmap_apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: Session[%d]\n", __func__, ac->session);
@@ -3071,7 +3071,7 @@ int q6asm_memory_unmap(struct audio_client *ac, uint32_t buf_add, int dir)
 	int rc = 0;
 
 	if (!ac || ac->apr == NULL || this_mmap.apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: Session[%d]\n", __func__, ac->session);
@@ -3141,7 +3141,7 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 	uint32_t bufsz_t;
 
 	if (!ac || ac->apr == NULL || ac->mmap_apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: Session[%d]\n", __func__, ac->session);
@@ -3250,7 +3250,7 @@ static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir)
 	int	cmd_size = 0;
 
 	if (!ac || ac->apr == NULL || ac->mmap_apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: Session[%d]\n", __func__, ac->session);
@@ -3611,7 +3611,7 @@ int q6asm_read(struct audio_client *ac)
 	struct audio_port_data     *port;
 	int rc;
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	if (ac->io_mode & SYNC_IO_MODE) {
@@ -3674,7 +3674,7 @@ int q6asm_read_nolock(struct audio_client *ac)
 	struct audio_port_data     *port;
 	int rc;
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	if (ac->io_mode & SYNC_IO_MODE) {
@@ -3875,7 +3875,7 @@ int q6asm_write(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
 	int dsp_buf = 0;
 
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: session[%d] len=%d", __func__, ac->session, len);
@@ -3943,7 +3943,7 @@ int q6asm_write_nolock(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
 	int dsp_buf = 0;
 
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s: session[%d] len=%d", __func__, ac->session, len);
@@ -4002,7 +4002,7 @@ int q6asm_get_session_time(struct audio_client *ac, uint64_t *tstamp)
 	int rc;
 
 	if (!ac || ac->apr == NULL || tstamp == NULL) {
-		pr_err("APR handle NULL or tstamp NULL\n");
+		pr_err("%s: APR handle NULL or tstamp NULL\n", __func__);
 		return -EINVAL;
 	}
 	q6asm_add_hdr(ac, &hdr, sizeof(hdr), TRUE);
@@ -4092,7 +4092,7 @@ static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 	int cnt = 0;
 
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	q6asm_stream_add_hdr(ac, &hdr, sizeof(hdr), TRUE, stream_id);
@@ -4357,7 +4357,7 @@ int q6asm_reg_tx_overflow(struct audio_client *ac, uint16_t enable)
 	int rc;
 
 	if (!ac || ac->apr == NULL) {
-		pr_err("APR handle NULL\n");
+		pr_err("%s: APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s:session[%d]enable[%d]\n", __func__,
