@@ -502,6 +502,7 @@ int map_and_register_buf(struct msm_vidc_inst *inst, struct v4l2_buffer *b)
 			temp->handle[plane]->device_addr + binfo->buff_off[i];
 			b->m.planes[i].m.userptr = binfo->device_addr[i];
 			binfo->mapped[i] = false;
+			binfo->handle[i] = temp->handle[i];
 		} else {
 			if (inst->map_output_buffer) {
 				binfo->handle[i] =
@@ -511,9 +512,6 @@ int map_and_register_buf(struct msm_vidc_inst *inst, struct v4l2_buffer *b)
 					rc = -EINVAL;
 					goto exit;
 				}
-				dprintk(VIDC_DBG,
-					"[MAP] - mapped handle[%d] = %p fd[%d] = %d",
-					i, binfo->handle[i], i, binfo->fd[i]);
 				binfo->mapped[i] = true;
 				binfo->device_addr[i] =
 					binfo->handle[i]->device_addr +
@@ -524,10 +522,6 @@ int map_and_register_buf(struct msm_vidc_inst *inst, struct v4l2_buffer *b)
 				binfo->device_addr[i] =
 					b->m.planes[i].m.userptr;
 			}
-			dprintk(VIDC_DBG, "Registering buffer: %d, %d, %d\n",
-					b->m.planes[i].reserved[0],
-					b->m.planes[i].reserved[1],
-					b->m.planes[i].length);
 		}
 		/* We maintain one ref count for all planes*/
 		if ((i == 0) && is_dynamic_output_buffer_mode(b, inst)) {
@@ -535,8 +529,12 @@ int map_and_register_buf(struct msm_vidc_inst *inst, struct v4l2_buffer *b)
 			if (rc < 0)
 				return rc;
 		}
+		dprintk(VIDC_DBG,
+			"%s: [MAP] binfo = %p, handle[%d] = %p, device_addr = 0x%x, fd = %d, offset = %d, mapped = %d\n",
+			__func__, binfo, i, binfo->handle[i],
+			binfo->device_addr[i], binfo->fd[i],
+			binfo->buff_off[i], binfo->mapped[i]);
 	}
-	dprintk(VIDC_DBG, "[MAP] Adding binfo = %p to list\n", binfo);
 	mutex_lock(&inst->lock);
 	list_add_tail(&binfo->list, &inst->registered_bufs);
 	mutex_unlock(&inst->lock);
@@ -585,6 +583,11 @@ int unmap_and_deregister_buf(struct msm_vidc_inst *inst,
 		goto exit;
 
 	for (i = 0; i < temp->num_planes; i++) {
+		dprintk(VIDC_DBG,
+			"%s: [UNMAP] binfo = %p, handle[%d] = %p, device_addr = 0x%x, fd = %d, offset = %d, mapped = %d\n",
+			__func__, temp, i, temp->handle[i],
+			temp->device_addr[i], temp->fd[i],
+			temp->buff_off[i], temp->mapped[i]);
 		/*
 		* Unmap the handle only if the buffer has been mapped and no
 		* other buffer has a reference to this buffer.
@@ -596,9 +599,6 @@ int unmap_and_deregister_buf(struct msm_vidc_inst *inst,
 		*/
 		if (temp->handle[i] && temp->mapped[i] &&
 			!temp->same_fd_ref[i]) {
-			dprintk(VIDC_DBG,
-				"[UNMAP] - handle[%d] = %p fd[%d] = %d",
-				i, temp->handle[i], i, temp->fd[i]);
 			msm_comm_smem_free(inst,
 				temp->handle[i]);
 		}
@@ -683,7 +683,8 @@ int output_buffer_cache_invalidate(struct msm_vidc_inst *inst,
 					__func__, rc);
 				return -EINVAL;
 			}
-		}
+		} else
+			dprintk(VIDC_ERR, "%s: WARN: NULL handle", __func__);
 	}
 	return 0;
 }
@@ -771,9 +772,15 @@ int msm_vidc_release_buffers(void *instance, int buffer_type)
 		if (bi->type == buffer_type) {
 			list_del(&bi->list);
 			for (i = 0; i < bi->num_planes; i++) {
-				if (bi->handle[i])
+				if (bi->handle[i] && bi->mapped[i]) {
+					dprintk(VIDC_DBG,
+						"%s: [UNMAP] binfo = %p, handle[%d] = %p, device_addr = 0x%x, fd = %d, offset = %d, mapped = %d\n",
+						__func__, bi, i, bi->handle[i],
+						bi->device_addr[i], bi->fd[i],
+						bi->buff_off[i], bi->mapped[i]);
 					msm_comm_smem_free(inst,
 							bi->handle[i]);
+				}
 			}
 			kfree(bi);
 		}
