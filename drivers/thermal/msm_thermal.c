@@ -1561,6 +1561,12 @@ module_param_named(core_limit_temp, msm_thermal_info.core_limit_temp_degC,
 		   uint, 0644);
 module_param_named(core_temp_hysteresis,
 		   msm_thermal_info.core_temp_hysteresis_degC, uint, 0644);
+module_param_named(freq_control_mask,
+		   msm_thermal_info.bootup_freq_control_mask, uint, 0644);
+module_param_named(hotplug_temp, msm_thermal_info.hotplug_temp_degC,
+		   uint, 0644);
+module_param_named(hotplug_temp_hysteresis,
+		   msm_thermal_info.hotplug_temp_hysteresis_degC, uint, 0644);
 module_param_named(psm_temp,
 		   msm_thermal_info.psm_temp_degC, uint, 0644);
 module_param_named(psm_temp_hysteresis,
