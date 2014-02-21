@@ -23,6 +23,7 @@
 
 #include "mdss.h"
 #include "mdss_mdp_hwio.h"
+#include "mdss_fb.h"
 
 #define MDSS_MDP_DEFAULT_INTR_MASK 0
 #define MDSS_MDP_CURSOR_WIDTH 64
@@ -638,6 +639,9 @@ struct mdss_mdp_ctl *mdss_mdp_ctl_mixer_switch(struct mdss_mdp_ctl *ctl,
 int mdss_mdp_wb_set_format(struct msm_fb_data_type *mfd, u32 dst_format);
 int mdss_mdp_wb_get_format(struct msm_fb_data_type *mfd,
 					struct mdp_mixer_cfg *mixer_cfg);
+
+void mdss_mdp_ctl_restore(struct mdss_mdp_ctl *ctl);
+void mdss_mdp_footswitch_ctrl_ulps(int on, struct device *dev);
 
 #define mfd_to_mdp5_data(mfd) (mfd->mdp.private1)
 #define mfd_to_mdata(mfd) (((struct mdss_overlay_private *)\
