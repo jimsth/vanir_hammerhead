@@ -136,8 +136,7 @@ static struct page_info *alloc_largest_available(struct ion_iommu_heap *heap,
 	return NULL;
 }
 
-static int ion_iommu_buffer_zero(struct ion_iommu_priv_data *data,
-				bool is_cached)
+static int ion_iommu_buffer_zero(struct ion_iommu_priv_data *data)
 {
 	int i, j, k;
 	unsigned int npages_to_vmap;
@@ -177,19 +176,18 @@ static int ion_iommu_buffer_zero(struct ion_iommu_priv_data *data,
 			return -ENOMEM;
 
 		memset(ptr, 0, npages_to_vmap * PAGE_SIZE);
-		if (is_cached) {
-			/*
-			 * invalidate the cache to pick up the zeroing
-			 */
-			for (k = 0; k < npages_to_vmap; k++) {
-				void *p = kmap_atomic(data->pages[i + k]);
-				phys_addr_t phys = page_to_phys(
-							data->pages[i + k]);
 
-				dmac_inv_range(p, p + PAGE_SIZE);
-				outer_inv_range(phys, phys + PAGE_SIZE);
-				kunmap_atomic(p);
-			}
+		/*
+		 * invalidate the cache to pick up the zeroing
+		 */
+		for (k = 0; k < npages_to_vmap; k++) {
+			void *p = kmap_atomic(data->pages[i + k]);
+			phys_addr_t phys = page_to_phys(
+						data->pages[i + k]);
+
+			dmac_inv_range(p, p + PAGE_SIZE);
+			outer_inv_range(phys, phys + PAGE_SIZE);
+			kunmap_atomic(p);
 		}
 		vunmap(ptr);
 	}
@@ -289,7 +287,7 @@ static int ion_iommu_heap_allocate(struct ion_heap *heap,
 
 
 		if (flags & ION_FLAG_POOL_FORCE_ALLOC) {
-			ret = ion_iommu_buffer_zero(data, ION_IS_CACHED(flags));
+			ret = ion_iommu_buffer_zero(data);
 			if (ret) {
 				pr_err("Couldn't vmap the pages for zeroing\n");
 				goto err3;
@@ -348,7 +346,7 @@ static void ion_iommu_heap_free(struct ion_buffer *buffer)
 		return;
 
 	if (!(buffer->flags & ION_FLAG_POOL_FORCE_ALLOC))
-		ion_iommu_buffer_zero(data, ION_IS_CACHED(buffer->flags));
+		ion_iommu_buffer_zero(data);
 
 	for_each_sg(table->sgl, sg, table->nents, i) {
 		int order = get_order(sg_dma_len(sg));
