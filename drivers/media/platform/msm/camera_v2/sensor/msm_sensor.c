@@ -1338,7 +1338,6 @@ static int msm_sensor_config_mt9m114b(struct msm_sensor_ctrl_t *s_ctrl,
 						&data, MSM_CAMERA_I2C_WORD_DATA);
 				if (rc < 0) {
 					pr_err("%s:%d failed\n", __func__, __LINE__);
-					rc = -EFAULT;
 					break;
 				}
 
@@ -1366,7 +1365,6 @@ static int msm_sensor_config_mt9m114b(struct msm_sensor_ctrl_t *s_ctrl,
 					&data, MSM_CAMERA_I2C_WORD_DATA);
 			if (rc < 0) {
 				pr_err("%s:%d failed\n", __func__, __LINE__);
-				rc = -EFAULT;
 				break;
 			}
 
@@ -1381,7 +1379,6 @@ static int msm_sensor_config_mt9m114b(struct msm_sensor_ctrl_t *s_ctrl,
 					data, MSM_CAMERA_I2C_WORD_DATA);
 			if (rc < 0) {
 				pr_err("%s:%d failed\n", __func__, __LINE__);
-				rc = -EFAULT;
 				break;
 			}
 
@@ -1397,7 +1394,6 @@ static int msm_sensor_config_mt9m114b(struct msm_sensor_ctrl_t *s_ctrl,
 					conf_array.reg_setting[i].reg_data, conf_array.data_type);
 			if (rc < 0) {
 				pr_err("%s:%d failed\n", __func__, __LINE__);
-				rc = -EFAULT;
 				break;
 			}
 		}
