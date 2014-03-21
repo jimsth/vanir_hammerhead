@@ -109,6 +109,12 @@ static void lm3630_set_max_current_reg(struct lm3630_device *dev, int val);
 static bool bl_dimmer = true;
 module_param_named(backlight_dimmer, bl_dimmer, bool, 0644);
 
+static int bl_thresh = 15;
+module_param_named(backlight_threshold, bl_thresh, int, 0644);
+
+static int bl_offset = 0;
+module_param_named(backlight_offset, bl_offset, int, 0644);
+
 struct debug_reg {
 	char  *name;
 	u8  reg;
@@ -225,14 +231,9 @@ static void lm3630_set_main_current_level(struct i2c_client *client, int level)
 			level = dev->max_brightness;
 
 		if (bl_dimmer) {
-			/*
-			 * Suggests that max_current is at 0x12 default,
-			 * which coincidentally suits us perfectly. Other
-			 * reasonable values would work almost as good.
-			 */
 			int max_cur = dev->max_current;
-			if (level < max_cur)
-				max_cur = level - dev->min_brightness;
+			if (level < bl_thresh)
+				max_cur = level - bl_offset;
 			pr_debug("%s: max_current %d level %d\n",
 				 __func__, max_cur, level);
 			lm3630_set_max_current_reg(dev, max_cur);
