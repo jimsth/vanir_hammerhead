@@ -2390,6 +2390,46 @@ static int msm8x10_wcd_enable_ext_mb_source(struct snd_soc_codec *codec,
 	return ret;
 }
 
+<<<<<<< HEAD
+=======
+static int msm8x10_wcd_enable_mbhc_micbias(struct snd_soc_codec *codec,
+					   bool enable,
+					   enum wcd9xxx_micbias_num micb_num)
+{
+	int rc;
+	struct msm8x10_wcd_priv *msm8x10_wcd = snd_soc_codec_get_drvdata(codec);
+
+	if (micb_num != MBHC_MICBIAS1) {
+		rc = -EINVAL;
+		goto err;
+	}
+
+	if (enable)
+		rc = snd_soc_dapm_force_enable_pin(&codec->dapm,
+			DAPM_MICBIAS_EXTERNAL_STANDALONE);
+	else {
+		if (msm8x10_wcd->micb_en_count > 1) {
+			msm8x10_wcd->micb_en_count--;
+			pr_debug("%s micb_en_count : %d", __func__,
+					msm8x10_wcd->micb_en_count);
+			return 0;
+		}
+		rc = snd_soc_dapm_disable_pin(&codec->dapm,
+			DAPM_MICBIAS_EXTERNAL_STANDALONE);
+	}
+	snd_soc_dapm_sync(&codec->dapm);
+
+err:
+	if (rc)
+		pr_debug("%s: Failed to force %s micbias", __func__,
+			enable ? "enable" : "disable");
+	else
+		pr_debug("%s: Trying force %s micbias", __func__,
+			enable ? "enable" : "disable");
+	return rc;
+}
+
+>>>>>>> f53dd1f... ASoC: wcd9xxx: Correct wrong check conditions
 static void msm8x10_wcd_micb_internal(struct snd_soc_codec *codec, bool on)
 {
 	snd_soc_update_bits(codec, MSM8X10_WCD_A_MICB_1_INT_RBIAS,
