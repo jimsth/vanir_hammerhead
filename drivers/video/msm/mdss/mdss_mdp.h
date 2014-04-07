@@ -180,6 +180,9 @@ struct mdss_mdp_ctl {
 
 	struct mdss_panel_data *panel_data;
 	struct mdss_mdp_vsync_handler vsync_handler;
+	struct mdss_mdp_vsync_handler recover_underrun_handler;
+	struct work_struct recover_work;
+	struct work_struct remove_underrun_handler;
 
 	int (*start_fnc) (struct mdss_mdp_ctl *ctl);
 	int (*stop_fnc) (struct mdss_mdp_ctl *ctl);
