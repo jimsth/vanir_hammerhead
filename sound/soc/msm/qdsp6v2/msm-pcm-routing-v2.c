@@ -584,7 +584,7 @@ static void msm_pcm_routing_process_audio(u16 reg, u16 val, int set)
 				adm_open(msm_bedais[reg].port_id,
 				path_type,
 				msm_bedais[reg].sample_rate, channels,
-				topology, false, bits_per_sample);
+				topology, fe_dai_perf_mode[val][session_type], bits_per_sample);
 
 			if (session_type == SESSION_TYPE_RX &&
 			    fdai->event_info.event_func)
@@ -3838,7 +3838,8 @@ static int msm_pcm_routing_prepare(struct snd_pcm_substream *substream)
 				path_type,
 				bedai->sample_rate,
 				channels,
-				topology, false,
+				topology,
+				fe_dai_perf_mode[i][session_type],
 				bits_per_sample);
 			}
 
