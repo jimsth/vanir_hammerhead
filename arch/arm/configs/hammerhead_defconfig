@@ -3061,6 +3061,7 @@ CONFIG_ANDROID_LMK_ADJ_RBTREE=y
 # CONFIG_ANDROID_BG_SCAN_MEM is not set
 # CONFIG_PHONE is not set
 # CONFIG_USB_WPAN_HCD is not set
+CONFIG_CPUPOWER=y
 
 #
 # Qualcomm MSM specific device drivers
