@@ -160,7 +160,7 @@ static unsigned long get_slowest_cpu_rate(void) {
 	return slow_rate;
 }
 
-static void mpdec_cpu_up(int cpu) {
+static void __ref mpdec_cpu_up(int cpu) {
 	if (!cpu_online(cpu)) {
 		mutex_lock(&per_cpu(msm_mpdec_cpudata, cpu).hotplug_mutex);
 		cpu_up(cpu);
