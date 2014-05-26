@@ -32,6 +32,7 @@
 #include <linux/thermal.h>
 #include <mach/rpm-regulator.h>
 #include <mach/rpm-regulator-smd.h>
+#include <mach/cpufreq.h>
 #include <linux/regulator/consumer.h>
 
 #define MAX_RAILS 5
@@ -54,6 +55,8 @@ static int psm_rails_cnt;
 static int limit_idx;
 static int limit_idx_low;
 static int limit_idx_high;
+static int throttled;
+static int max_idx;
 static int max_tsens_num;
 static struct cpufreq_frequency_table *table;
 static uint32_t usefreq;
@@ -585,22 +588,25 @@ static int msm_thermal_get_freq_table(void)
 		i++;
 
 	limit_idx_low = 0;
-	limit_idx_high = limit_idx = i - 1;
+	limit_idx_high = limit_idx = max_idx = i - 1;
 	BUG_ON(limit_idx_high <= 0 || limit_idx_high <= limit_idx_low);
 fail:
 	return ret;
 }
 
-static int update_cpu_max_freq(int cpu, uint32_t max_freq)
+static int update_cpu_max_freq(int cpu, uint32_t max_freq, long temp)
 {
 	int ret = 0;
 
-	if (max_freq != UINT_MAX)
-		pr_info("%s: Limiting cpu%d max frequency to %d\n",
-				KBUILD_MODNAME, cpu, max_freq);
-	else
-		pr_info("%s: Max frequency reset for cpu%d\n",
-				KBUILD_MODNAME, cpu);
+	if (!cpu) {
+		if (max_freq != UINT_MAX)
+			pr_info
+			    ("%s: Limiting max frequency to %d [Temp %ldC]\n",
+			     KBUILD_MODNAME, max_freq, temp);
+		else
+			pr_info("%s: Max frequency reset [Temp %ldC]\n",
+				KBUILD_MODNAME, temp);
+	}
 	get_online_cpus();
 	for_each_online_cpu(cpu) {
 		if (cpufreq_update_policy(cpu))
@@ -780,13 +786,16 @@ static void __ref do_freq_control(long temp)
 		limit_idx -= msm_thermal_info.freq_step;
 		if (limit_idx < limit_idx_low)
 			limit_idx = limit_idx_low;
-		max_freq = table[limit_idx].frequency;
+		/* Consider saved policy->max freq */
+		max_freq = table[min(max_idx - (int)msm_thermal_info.freq_step,
+				     limit_idx)].frequency;
 	} else if (temp < msm_thermal_info.limit_temp_degC -
 		 msm_thermal_info.temp_hysteresis_degC) {
 		if (limit_idx == limit_idx_high)
 			return;
 
 		limit_idx += msm_thermal_info.freq_step;
+		limit_idx_high = min(max_idx, limit_idx_high);
 		if (limit_idx >= limit_idx_high) {
 			limit_idx = limit_idx_high;
 			max_freq = UINT_MAX;
@@ -797,12 +806,26 @@ static void __ref do_freq_control(long temp)
 	if (max_freq == limited_max_freq)
 		return;
 
+	if (!throttled && max_freq > 0) {
+		/*
+		 * We're about to throttle cpu maximum freq. Save
+		 * current policy->max frequency table index and
+		 * set max_freq accordingly.
+		 */
+		struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
+		max_idx = msm_cpufreq_get_index(policy, policy->max);
+		max_freq =
+		    table[max_idx - msm_thermal_info.freq_step].frequency;
+		throttled = 1;
+	} else if (throttled && max_freq < 0)
+		throttled = 0;
+
 	limited_max_freq = max_freq;
 	/* Update new limits */
 	for_each_possible_cpu(cpu) {
 		if (!(msm_thermal_info.freq_control_mask & BIT(cpu)))
 			continue;
-		update_cpu_max_freq(cpu, max_freq);
+		update_cpu_max_freq(cpu, max_freq, temp);
 	}
 }
 

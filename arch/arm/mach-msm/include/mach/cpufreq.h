@@ -36,4 +36,7 @@ extern unsigned long msm_cpufreq_get_bw(void)
 }
 #endif
 
+extern int msm_cpufreq_get_index(struct cpufreq_policy *policy,
+				 unsigned int freq);
+
 #endif
