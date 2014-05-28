@@ -33,8 +33,8 @@
 #define CONFIG_LOGCAT_SIZE 256
 #endif
 
-static unsigned int log_enabled = 1;
-module_param(log_enabled, uint, S_IWUSR | S_IRUGO);
+static unsigned int enabled = 1;
+module_param(enabled, uint, S_IWUSR | S_IRUGO);
 
 /*
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
@@ -473,7 +473,7 @@ ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	struct timespec now;
 	ssize_t ret = 0;
 
-    if (!log_enabled)
+    if (!enabled)
         return 0;
 
 	now = current_kernel_time();
