@@ -40,7 +40,6 @@
 #define MAX_CURRENT_UA 1000000
 #define MAX_RAILS 5
 #define MAX_THRESHOLD 2
-#define MONITOR_ALL_TSENS -1
 
 static struct msm_thermal_data msm_thermal_info;
 static struct delayed_work check_temp_work;
@@ -54,13 +53,10 @@ static struct kobject *cc_kobj;
 static struct work_struct timer_work;
 static struct task_struct *hotplug_task;
 static struct task_struct *freq_mitigation_task;
-static struct task_struct *thermal_monitor_task;
 static struct completion hotplug_notify_complete;
 static struct completion freq_mitigation_complete;
-static struct completion thermal_monitor_complete;
 
 static int enabled;
-static int polling_enabled;
 static int rails_cnt;
 static int psm_rails_cnt;
 static int ocr_rail_cnt;
@@ -82,8 +78,6 @@ static bool freq_mitigation_enabled;
 static bool ocr_enabled;
 static bool ocr_nodes_called;
 static bool ocr_probed;
-static bool interrupt_mode_enable;
-static bool msm_thermal_probed;
 static int *tsens_id_map;
 static DEFINE_MUTEX(vdd_rstr_mutex);
 static DEFINE_MUTEX(psm_mutex);
@@ -98,16 +92,9 @@ enum thermal_threshold {
 	THRESHOLD_MAX_NR,
 };
 
-enum sensor_id_type {
-	THERM_ZONE_ID,
-	THERM_TSENS_ID,
-	THERM_ID_MAX_NR,
-};
-
 struct cpu_info {
 	uint32_t cpu;
 	const char *sensor_type;
-	enum sensor_id_type id_type;
 	uint32_t sensor_id;
 	bool offline;
 	bool user_offline;
@@ -119,21 +106,6 @@ struct cpu_info {
 	uint32_t limited_max_freq;
 	uint32_t limited_min_freq;
 	bool freq_thresh_clear;
-};
-
-struct threshold_info;
-struct therm_threshold {
-	int32_t sensor_id;
-	struct sensor_threshold threshold[MAX_THRESHOLD];
-	int32_t trip_triggered;
-	void (*notify)(struct therm_threshold *);
-	struct threshold_info *parent;
-};
-
-struct threshold_info {
-	uint32_t thresh_ct;
-	bool thresh_triggered;
-	struct therm_threshold *thresh_list;
 };
 
 struct rail {
@@ -159,16 +131,10 @@ struct psm_rail {
 	struct attribute_group attr_gp;
 };
 
-enum msm_thresh_list {
-	MSM_VDD_RESTRICTION,
-	MSM_LIST_MAX_NR,
-};
-
 static struct psm_rail *psm_rails;
 static struct psm_rail *ocr_rails;
 static struct rail *rails;
 static struct cpu_info cpus[NR_CPUS];
-static struct threshold_info *thresh;
 
 struct vdd_rstr_enable {
 	struct kobj_attribute ko_attr;
@@ -808,63 +774,31 @@ set_done:
 	return ret;
 }
 
-static int therm_get_temp(uint32_t id, enum sensor_id_type type, long *temp)
-{
-	int ret = 0;
-	struct tsens_device tsens_dev;
-
-	if (!temp) {
-		pr_err("Invalid value\n");
-		ret = -EINVAL;
-		goto get_temp_exit;
-	}
-
-	switch (type) {
-	case THERM_ZONE_ID:
-		tsens_dev.sensor_num = tsens_id_map[id];
-		break;
-	case THERM_TSENS_ID:
-		tsens_dev.sensor_num = id;
-		break;
-	default:
-		pr_err("Invalid type\n");
-		ret = -EINVAL;
-		goto get_temp_exit;
-		break;
-	}
-
-	ret = tsens_get_temp(&tsens_dev, temp);
-	if (ret) {
-		pr_err("Unable to read TSENS sensor %d\n",
-			tsens_dev.sensor_num);
-		goto get_temp_exit;
-	}
-
-get_temp_exit:
-	return ret;
-}
-
-static int set_threshold(uint32_t zone_id,
+static int set_threshold(uint32_t sensor_id,
 	struct sensor_threshold *threshold)
 {
+	struct tsens_device tsens_dev;
 	int i = 0, ret = 0;
 	long temp;
 
-	if ((!threshold) || (zone_id >= max_tsens_num)) {
+	if ((!threshold) || check_sensor_id(sensor_id)) {
 		pr_err("%s: Invalid input\n", KBUILD_MODNAME);
 		ret = -EINVAL;
 		goto set_threshold_exit;
 	}
 
-	ret = therm_get_temp(zone_id, THERM_ZONE_ID, &temp);
-	if (ret)
+	tsens_dev.sensor_num = sensor_id;
+	ret = tsens_get_temp(&tsens_dev, &temp);
+	if (ret) {
+		pr_err("%s: Unable to read TSENS sensor %d\n",
+			KBUILD_MODNAME, tsens_dev.sensor_num);
 		goto set_threshold_exit;
-
+	}
 	while (i < MAX_THRESHOLD) {
 		switch (threshold[i].trip) {
 		case THERMAL_TRIP_CONFIGURABLE_HI:
 			if (threshold[i].temp >= temp) {
-				ret = set_and_activate_threshold(zone_id,
+				ret = set_and_activate_threshold(sensor_id,
 					&threshold[i]);
 				if (ret)
 					goto set_threshold_exit;
@@ -872,7 +806,7 @@ static int set_threshold(uint32_t zone_id,
 			break;
 		case THERMAL_TRIP_CONFIGURABLE_LOW:
 			if (threshold[i].temp <= temp) {
-				ret = set_and_activate_threshold(zone_id,
+				ret = set_and_activate_threshold(sensor_id,
 					&threshold[i]);
 				if (ret)
 					goto set_threshold_exit;
@@ -970,9 +904,7 @@ static __ref int do_hotplug(void *data)
 		return -EINVAL;
 
 	while (!kthread_should_stop()) {
-		while (wait_for_completion_interruptible(
-			&hotplug_notify_complete) != 0)
-			;
+		wait_for_completion_interruptible(&hotplug_notify_complete);
 		INIT_COMPLETION(hotplug_notify_complete);
 		mask = 0;
 
@@ -1010,6 +942,7 @@ static __ref int do_hotplug(void *data)
 
 static int do_ocr(void)
 {
+	struct tsens_device tsens_dev;
 	long temp = 0;
 	int ret = 0;
 	int i = 0, j = 0;
@@ -1020,10 +953,11 @@ static int do_ocr(void)
 
 	mutex_lock(&ocr_mutex);
 	for (i = 0; i < max_tsens_num; i++) {
-		ret = therm_get_temp(tsens_id_map[i], THERM_TSENS_ID, &temp);
+		tsens_dev.sensor_num = tsens_id_map[i];
+		ret = tsens_get_temp(&tsens_dev, &temp);
 		if (ret) {
 			pr_debug("%s: Unable to read TSENS sensor %d\n",
-					__func__, tsens_id_map[i]);
+					__func__, tsens_dev.sensor_num);
 			auto_cnt++;
 			continue;
 		}
@@ -1065,6 +999,7 @@ do_ocr_exit:
 
 static int do_vdd_restriction(void)
 {
+	struct tsens_device tsens_dev;
 	long temp = 0;
 	int ret = 0;
 	int i = 0;
@@ -1080,10 +1015,11 @@ static int do_vdd_restriction(void)
 
 	mutex_lock(&vdd_rstr_mutex);
 	for (i = 0; i < max_tsens_num; i++) {
-		ret = therm_get_temp(tsens_id_map[i], THERM_TSENS_ID, &temp);
+		tsens_dev.sensor_num = tsens_id_map[i];
+		ret = tsens_get_temp(&tsens_dev, &temp);
 		if (ret) {
-			pr_debug("Unable to read TSENS sensor %d\n",
-				tsens_id_map[i]);
+			pr_debug("%s: Unable to read TSENS sensor %d\n",
+					__func__, tsens_dev.sensor_num);
 			dis_cnt++;
 			continue;
 		}
@@ -1112,6 +1048,7 @@ exit:
 
 static int do_psm(void)
 {
+	struct tsens_device tsens_dev;
 	long temp = 0;
 	int ret = 0;
 	int i = 0;
@@ -1119,10 +1056,11 @@ static int do_psm(void)
 
 	mutex_lock(&psm_mutex);
 	for (i = 0; i < max_tsens_num; i++) {
-		ret = therm_get_temp(tsens_id_map[i], THERM_TSENS_ID, &temp);
+		tsens_dev.sensor_num = tsens_id_map[i];
+		ret = tsens_get_temp(&tsens_dev, &temp);
 		if (ret) {
 			pr_debug("%s: Unable to read TSENS sensor %d\n",
-					__func__, tsens_id_map[i]);
+					__func__, tsens_dev.sensor_num);
 			auto_cnt++;
 			continue;
 		}
@@ -1199,13 +1137,15 @@ static void __ref do_freq_control(long temp)
 static void __ref check_temp(struct work_struct *work)
 {
 	static int limit_init;
+	struct tsens_device tsens_dev;
 	long temp = 0;
 	int ret = 0;
 
-	ret = therm_get_temp(msm_thermal_info.sensor_id, THERM_TSENS_ID, &temp);
+	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
+	ret = tsens_get_temp(&tsens_dev, &temp);
 	if (ret) {
-		pr_debug("Unable to read TSENS sensor %d\n",
-				msm_thermal_info.sensor_id);
+		pr_debug("%s: Unable to read TSENS sensor %d\n",
+				KBUILD_MODNAME, tsens_dev.sensor_num);
 		goto reschedule;
 	}
 
@@ -1224,7 +1164,7 @@ static void __ref check_temp(struct work_struct *work)
 	do_freq_control(temp);
 
 reschedule:
-	if (polling_enabled)
+	if (enabled)
 		schedule_delayed_work(&check_temp_work,
 				msecs_to_jiffies(msm_thermal_info.poll_ms));
 }
@@ -1318,6 +1258,7 @@ static int hotplug_notify(enum thermal_trip_type type, int temp, void *data)
 /* Adjust cpus offlined bit based on temperature reading. */
 static int hotplug_init_cpu_offlined(void)
 {
+	struct tsens_device tsens_dev;
 	long temp = 0;
 	uint32_t cpu = 0;
 
@@ -1328,10 +1269,10 @@ static int hotplug_init_cpu_offlined(void)
 	for_each_possible_cpu(cpu) {
 		if (!(msm_thermal_info.core_control_mask & BIT(cpus[cpu].cpu)))
 			continue;
-		if (therm_get_temp(cpus[cpu].sensor_id, cpus[cpu].id_type,
-					&temp)) {
+		tsens_dev.sensor_num = cpus[cpu].sensor_id;
+		if (tsens_get_temp(&tsens_dev, &temp)) {
 			pr_err("%s: Unable to read TSENS sensor %d\n",
-				KBUILD_MODNAME, cpus[cpu].sensor_id);
+				KBUILD_MODNAME, tsens_dev.sensor_num);
 			mutex_unlock(&core_control_mutex);
 			return -EINVAL;
 		}
@@ -1368,7 +1309,6 @@ static void hotplug_init(void)
 	for_each_possible_cpu(cpu) {
 		cpus[cpu].sensor_id =
 			sensor_get_id((char *)cpus[cpu].sensor_type);
-		cpus[cpu].id_type = THERM_ZONE_ID;
 		if (!(msm_thermal_info.core_control_mask & BIT(cpus[cpu].cpu)))
 			continue;
 
@@ -1406,9 +1346,7 @@ static __ref int do_freq_mitigation(void *data)
 	uint32_t cpu = 0, max_freq_req = 0, min_freq_req = 0;
 
 	while (!kthread_should_stop()) {
-		while (wait_for_completion_interruptible(
-			&freq_mitigation_complete) != 0)
-			;
+		wait_for_completion_interruptible(&freq_mitigation_complete);
 		INIT_COMPLETION(freq_mitigation_complete);
 
 		get_online_cpus();
@@ -1563,217 +1501,6 @@ set_freq_exit:
 	return ret;
 }
 
-int therm_set_threshold(struct threshold_info *thresh_inp)
-{
-	int ret = 0, i = 0, err = 0;
-	struct therm_threshold *thresh_ptr;
-
-	if (!thresh_inp) {
-		pr_err("%s: %s: Invalid input\n",
-			KBUILD_MODNAME, __func__);
-		ret = -EINVAL;
-		goto therm_set_exit;
-	}
-
-	thresh_inp->thresh_triggered = false;
-	for (i = 0; i < thresh_inp->thresh_ct; i++) {
-		thresh_ptr = &thresh_inp->thresh_list[i];
-		thresh_ptr->trip_triggered = -1;
-		err = set_threshold(thresh_ptr->sensor_id,
-			thresh_ptr->threshold);
-		if (err) {
-			ret = err;
-			err = 0;
-		}
-	}
-
-therm_set_exit:
-	return ret;
-}
-
-static void vdd_restriction_notify(struct therm_threshold *trig_thresh)
-{
-	int ret = 0;
-	static uint32_t vdd_sens_status;
-
-	if (!vdd_rstr_enabled)
-		return;
-	if (!trig_thresh) {
-		pr_err("%s:%s Invalid input\n", KBUILD_MODNAME, __func__);
-		return;
-	}
-	if (trig_thresh->trip_triggered < 0)
-		goto set_and_exit;
-
-	mutex_lock(&vdd_rstr_mutex);
-	pr_debug("%s: sensor%d reached %d thresh for Vdd restriction\n",
-		KBUILD_MODNAME, trig_thresh->sensor_id,
-		trig_thresh->trip_triggered);
-	switch (trig_thresh->trip_triggered) {
-	case THERMAL_TRIP_CONFIGURABLE_HI:
-		if (vdd_sens_status & BIT(trig_thresh->sensor_id))
-			vdd_sens_status ^= BIT(trig_thresh->sensor_id);
-		break;
-	case THERMAL_TRIP_CONFIGURABLE_LOW:
-		vdd_sens_status |= BIT(trig_thresh->sensor_id);
-		break;
-	default:
-		pr_err("%s:%s: Unsupported trip type\n",
-			KBUILD_MODNAME, __func__);
-		goto unlock_and_exit;
-		break;
-	}
-
-	ret = vdd_restriction_apply_all((vdd_sens_status) ? 1 : 0);
-	if (ret) {
-		pr_err("%s vdd rstr votlage for all failed\n",
-			(vdd_sens_status) ?
-			"Enable" : "Disable");
-			goto unlock_and_exit;
-	}
-
-unlock_and_exit:
-	mutex_unlock(&vdd_rstr_mutex);
-set_and_exit:
-	set_threshold(trig_thresh->sensor_id, trig_thresh->threshold);
-	return;
-}
-
-static __ref int do_thermal_monitor(void *data)
-{
-	int ret = 0, i, j;
-	struct therm_threshold *sensor_list;
-
-	while (!kthread_should_stop()) {
-		while (wait_for_completion_interruptible(
-			&thermal_monitor_complete) != 0)
-			;
-		INIT_COMPLETION(thermal_monitor_complete);
-
-		for (i = 0; i < MSM_LIST_MAX_NR; i++) {
-			if (!thresh[i].thresh_triggered)
-				continue;
-			thresh[i].thresh_triggered = false;
-			for (j = 0; j < thresh[i].thresh_ct; j++) {
-				sensor_list = &thresh[i].thresh_list[j];
-				if (sensor_list->trip_triggered < 0)
-					continue;
-				sensor_list->notify(sensor_list);
-				sensor_list->trip_triggered = -1;
-			}
-		}
-	}
-	return ret;
-}
-
-static void thermal_monitor_init(void)
-{
-	if (thermal_monitor_task)
-		return;
-
-	init_completion(&thermal_monitor_complete);
-	thermal_monitor_task = kthread_run(do_thermal_monitor, NULL,
-		"msm_thermal:therm_monitor");
-	if (IS_ERR(thermal_monitor_task)) {
-		pr_err("%s: Failed to create thermal monitor thread\n",
-				KBUILD_MODNAME);
-		goto init_exit;
-	}
-
-	if (vdd_rstr_enabled)
-		therm_set_threshold(&thresh[MSM_VDD_RESTRICTION]);
-
-init_exit:
-	return;
-}
-
-static int msm_thermal_notify(enum thermal_trip_type type, int temp, void *data)
-{
-	struct therm_threshold *thresh_data = (struct therm_threshold *)data;
-
-	if (thermal_monitor_task) {
-		thresh_data->trip_triggered = type;
-		thresh_data->parent->thresh_triggered = true;
-		complete(&thermal_monitor_complete);
-	} else {
-		pr_err("%s: Thermal monitor task is not initialized\n",
-			KBUILD_MODNAME);
-	}
-	return 0;
-}
-
-static int init_threshold(enum msm_thresh_list index,
-	int sensor_id, int32_t hi_temp, int32_t low_temp,
-	void (*callback)(struct therm_threshold *))
-{
-	int ret = 0, i;
-	struct therm_threshold *thresh_ptr;
-
-	if (!callback || index >= MSM_LIST_MAX_NR || index < 0
-		|| sensor_id == -ENODEV) {
-		pr_err("%s: Invalid input to init_threshold\n",
-			KBUILD_MODNAME);
-		ret = -EINVAL;
-		goto init_thresh_exit;
-	}
-	if (thresh[index].thresh_list) {
-		pr_err("%s: threshold already initialized\n",
-			KBUILD_MODNAME);
-		ret = -EEXIST;
-		goto init_thresh_exit;
-	}
-
-	thresh[index].thresh_ct = (sensor_id == MONITOR_ALL_TSENS) ?
-						max_tsens_num : 1;
-	thresh[index].thresh_triggered = false;
-	thresh[index].thresh_list = kzalloc(sizeof(struct therm_threshold) *
-					thresh[index].thresh_ct, GFP_KERNEL);
-	if (!thresh[index].thresh_list) {
-		pr_err("%s: kzalloc failed\n", KBUILD_MODNAME);
-		ret = -ENOMEM;
-		goto init_thresh_exit;
-	}
-
-	thresh_ptr = thresh[index].thresh_list;
-	if (sensor_id == MONITOR_ALL_TSENS) {
-		for (i = 0; i < max_tsens_num; i++) {
-			thresh_ptr[i].sensor_id = tsens_id_map[i];
-			thresh_ptr[i].notify = callback;
-			thresh_ptr[i].trip_triggered = -1;
-			thresh_ptr[i].parent = &thresh[index];
-			thresh_ptr[i].threshold[0].temp = hi_temp;
-			thresh_ptr[i].threshold[0].trip =
-				THERMAL_TRIP_CONFIGURABLE_HI;
-			thresh_ptr[i].threshold[1].temp = low_temp;
-			thresh_ptr[i].threshold[1].trip =
-				THERMAL_TRIP_CONFIGURABLE_LOW;
-			thresh_ptr[i].threshold[0].notify =
-			thresh_ptr[i].threshold[1].notify = msm_thermal_notify;
-			thresh_ptr[i].threshold[0].data =
-			thresh_ptr[i].threshold[1].data =
-				(void *)&thresh_ptr[i];
-		}
-	} else {
-		thresh_ptr->sensor_id = sensor_id;
-		thresh_ptr->notify = callback;
-		thresh_ptr->trip_triggered = -1;
-		thresh_ptr->parent = &thresh[index];
-		thresh_ptr->threshold[0].temp = hi_temp;
-		thresh_ptr->threshold[0].trip =
-			THERMAL_TRIP_CONFIGURABLE_HI;
-		thresh_ptr->threshold[1].temp = low_temp;
-		thresh_ptr->threshold[1].trip =
-			THERMAL_TRIP_CONFIGURABLE_LOW;
-		thresh_ptr->threshold[0].notify =
-		thresh_ptr->threshold[1].notify = msm_thermal_notify;
-		thresh_ptr->threshold[0].data =
-		thresh_ptr->threshold[1].data = (void *)thresh_ptr;
-	}
-
-init_thresh_exit:
-	return ret;
-}
-
 /*
  * We will reset the cpu frequencies limits here. The core online/offline
  * status will be carried over to the process stopping the msm_thermal, as
@@ -1798,30 +1525,16 @@ static void __ref disable_msm_thermal(void)
 	put_online_cpus();
 }
 
-static void interrupt_mode_init(void)
-{
-	if (!msm_thermal_probed) {
-		interrupt_mode_enable = true;
-		return;
-	}
-	if (polling_enabled) {
-		pr_info("%s: Interrupt mode init\n", KBUILD_MODNAME);
-		polling_enabled = 0;
-		disable_msm_thermal();
-		hotplug_init();
-		freq_mitigation_init();
-		thermal_monitor_init();
-	}
-}
-
 static int __ref set_enabled(const char *val, const struct kernel_param *kp)
 {
 	int ret = 0;
 
 	ret = param_set_bool(val, kp);
-	if (!enabled)
-		interrupt_mode_init();
-	else
+	if (!enabled) {
+		disable_msm_thermal();
+		hotplug_init();
+		freq_mitigation_init();
+	} else
 		pr_info("%s: no action for enabled = %d\n",
 			KBUILD_MODNAME, enabled);
 
@@ -1917,7 +1630,7 @@ static ssize_t __ref store_cpus_offlined(struct kobject *kobj,
 		goto done_cc;
 	}
 
-	if (polling_enabled) {
+	if (enabled) {
 		pr_err("%s: Ignoring request; polling thread is enabled.\n",
 				KBUILD_MODNAME);
 		goto done_cc;
@@ -2070,34 +1783,10 @@ failed:
 	return ret;
 }
 
-int msm_thermal_pre_init(void)
-{
-	int ret = 0;
+static int virtual_sensor0 = -EINVAL;
+module_param(virtual_sensor0, int, 0644);
 
-	tsens_get_max_sensor_num(&max_tsens_num);
-	if (create_sensor_id_map()) {
-		ret = -EINVAL;
-		goto pre_init_exit;
-	}
-
-	if (!thresh) {
-		thresh = kzalloc(
-				sizeof(struct threshold_info) * MSM_LIST_MAX_NR,
-				GFP_KERNEL);
-		if (!thresh) {
-			pr_err("%s:%s: kzalloc failed\n",
-				KBUILD_MODNAME, __func__);
-			ret = -ENOMEM;
-			goto pre_init_exit;
-		}
-		memset(thresh, 0, sizeof(struct threshold_info) *
-			MSM_LIST_MAX_NR);
-	}
-pre_init_exit:
-	return ret;
-}
-
-int msm_thermal_init(struct msm_thermal_data *pdata)
+int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
 {
 	int ret = 0;
 	uint32_t cpu;
@@ -2115,13 +1804,15 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 		cpus[cpu].freq_thresh_clear = false;
 	}
 	BUG_ON(!pdata);
+	tsens_get_max_sensor_num(&max_tsens_num);
 	memcpy(&msm_thermal_info, pdata, sizeof(struct msm_thermal_data));
 
+	if (create_sensor_id_map())
+		return -EINVAL;
 	if (check_sensor_id(msm_thermal_info.sensor_id))
 		return -EINVAL;
 
 	enabled = 1;
-	polling_enabled = 1;
 	ret = cpufreq_register_notifier(&msm_thermal_cpufreq_notifier,
 			CPUFREQ_POLICY_NOTIFIER);
 	if (ret)
@@ -2576,11 +2267,6 @@ static int probe_vdd_rstr(struct device_node *node,
 				__func__);
 			goto read_node_fail;
 		}
-		ret = init_threshold(MSM_VDD_RESTRICTION, MONITOR_ALL_TSENS,
-			data->vdd_rstr_temp_hyst_degC, data->vdd_rstr_temp_degC,
-			vdd_restriction_notify);
-		if (ret)
-			goto read_node_fail;
 		vdd_rstr_enabled = true;
 	}
 read_node_fail:
@@ -2857,9 +2543,6 @@ static int __devinit msm_thermal_dev_probe(struct platform_device *pdev)
 	struct msm_thermal_data data;
 
 	memset(&data, 0, sizeof(struct msm_thermal_data));
-	ret = msm_thermal_pre_init();
-	if (ret)
-		goto fail;
 
 	key = "qcom,sensor-id";
 	ret = of_property_read_u32(node, key, &data.sensor_id);
@@ -2928,12 +2611,6 @@ static int __devinit msm_thermal_dev_probe(struct platform_device *pdev)
 	}
 	msm_thermal_ioctl_init();
 	ret = msm_thermal_init(&data);
-	msm_thermal_probed = true;
-
-	if (interrupt_mode_enable) {
-		interrupt_mode_init();
-		interrupt_mode_enable = false;
-	}
 
 	return ret;
 fail:
@@ -2947,12 +2624,6 @@ fail:
 static int msm_thermal_dev_exit(struct platform_device *inp_dev)
 {
 	msm_thermal_ioctl_cleanup();
-	if (thresh) {
-		if (vdd_rstr_enabled)
-			kfree(thresh[MSM_VDD_RESTRICTION].thresh_list);
-		kfree(thresh);
-		thresh = NULL;
-	}
 	return 0;
 }
 
@@ -2988,7 +2659,6 @@ int __init msm_thermal_late_init(void)
 	INIT_WORK(&timer_work, timer_work_fn);
 	msm_thermal_add_timer_nodes();
 
-	interrupt_mode_init();
 	return 0;
 }
 late_initcall(msm_thermal_late_init);
