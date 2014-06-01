@@ -29,7 +29,7 @@
 #include <linux/sysfs.h>
 #include <linux/types.h>
 #include <linux/android_alarm.h>
-#include <mach/cpufreq.h>
+#include <linux/thermal.h>
 #include <mach/rpm-regulator.h>
 #include <mach/rpm-regulator-smd.h>
 #include <linux/regulator/consumer.h>
@@ -946,7 +946,7 @@ module_param_named(limit_temp, msm_thermal_info.limit_temp_degC,
 		   uint, 0644);
 module_param_named(temp_hysteresis, msm_thermal_info.temp_hysteresis_degC,
 		   uint, 0644);
-module_param_named(freq_step, msm_thermal_info.bootup_freq_step, uint, 0644);
+module_param_named(freq_step, msm_thermal_info.freq_step, uint, 0644);
 module_param_named(core_limit_temp, msm_thermal_info.core_limit_temp_degC,
 		   uint, 0644);
 module_param_named(core_temp_hysteresis,
@@ -955,6 +955,7 @@ module_param_named(psm_temp,
 		   msm_thermal_info.psm_temp_degC, uint, 0644);
 module_param_named(psm_temp_hysteresis,
 		   msm_thermal_info.psm_temp_hyst_degC, uint, 0644);
+
 
 #ifdef CONFIG_SMP
 /* Call with core_control_mutex locked */
@@ -1204,6 +1205,13 @@ int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
 		return -EINVAL;
 
 	enabled = 1;
+
+	ret = cpufreq_register_notifier(&msm_thermal_cpufreq_notifier,
+			CPUFREQ_POLICY_NOTIFIER);
+	if (ret)
+		pr_err("%s: cannot register cpufreq notifier\n",
+			KBUILD_MODNAME);
+
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
 	schedule_delayed_work(&check_temp_work, msecs_to_jiffies(10000));
 
