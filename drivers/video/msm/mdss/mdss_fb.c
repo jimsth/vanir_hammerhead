@@ -56,6 +56,7 @@
 #endif
 
 #include "mdss_fb.h"
+#include "mdss_mdp.h"
 
 #ifdef CONFIG_LGE_HANDLE_PANIC
 #include <mach/lge_handle_panic.h>
@@ -2171,8 +2172,9 @@ static int mdss_fb_display_commit(struct fb_info *info,
 static int __ioctl_wait_idle(struct msm_fb_data_type *mfd, u32 cmd)
 {
 	int ret = 0;
+	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 
-	if (mfd->wait_for_kickoff &&
+	if (mfd->wait_for_kickoff && mdata->ulps &&
 		((cmd == MSMFB_OVERLAY_PREPARE) ||
 		(cmd == MSMFB_BUFFER_SYNC) ||
 		(cmd == MSMFB_OVERLAY_SET))) {
