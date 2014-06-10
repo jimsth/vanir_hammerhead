@@ -2116,9 +2116,11 @@ static int mdss_fb_display_commit(struct fb_info *info,
 static int __ioctl_wait_idle(struct msm_fb_data_type *mfd, u32 cmd)
 {
 	int ret = 0;
+	struct mdss_panel_info *panel_info = mfd->panel_info;
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 
-	if (mfd->wait_for_kickoff && mdata->ulps &&
+	if (mfd->wait_for_kickoff &&
+		(panel_info->ulps_feature_enabled ? mdata->ulps : true) &&
 		((cmd == MSMFB_OVERLAY_PREPARE) ||
 		(cmd == MSMFB_BUFFER_SYNC) ||
 		(cmd == MSMFB_OVERLAY_SET))) {
