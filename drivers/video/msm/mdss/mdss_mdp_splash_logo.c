@@ -378,7 +378,7 @@ static int mdss_mdp_splash_kickoff(struct msm_fb_data_type *mfd,
 	}
 	mutex_unlock(&mdp5_data->ov_lock);
 
-	ret = mfd->mdp.kickoff_fnc(mfd, NULL);
+	ret = mfd->mdp.kickoff_fnc(mfd);
 	if (ret) {
 		pr_err("error in displaying image\n");
 		mdss_mdp_overlay_release(mfd, sinfo->pipe_ndx[0] |
