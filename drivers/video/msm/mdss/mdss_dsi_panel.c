@@ -222,7 +222,7 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	bool prevent_sleep = false;
 #endif
 #if defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE)
-	prevent_sleep = (s2w_switch > 0) && (s2w_s2sonly == 0);
+	prevent_sleep = (s2w_switch > 0);
 #endif
 #if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
 	prevent_sleep = prevent_sleep || (dt2w_switch > 0);
@@ -474,7 +474,7 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 	bool prevent_sleep = false;
 #endif
 #if defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE)
-	prevent_sleep = (s2w_switch > 0) && (s2w_s2sonly == 0);
+	prevent_sleep = (s2w_switch > 0);
 #endif
 #if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
 	prevent_sleep = prevent_sleep || (dt2w_switch > 0);
@@ -517,6 +517,13 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 	pr_info("%s:\n", __func__);
 	return 0;
 }
+
+#ifdef CONFIG_WAKE_TIMEOUT
+void ext_mdss_dsi_panel_off(void)
+{
+	mdss_dsi_panel_reset(cmds_panel_data, 0);
+}
+#endif
 
 static int mdss_dsi_parse_dcs_cmds(struct device_node *np,
 		struct dsi_panel_cmds *pcmds, char *cmd_key, char *link_key)
