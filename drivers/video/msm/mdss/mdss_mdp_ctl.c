@@ -313,13 +313,17 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 	struct mdss_mdp_mixer *mixer;
 	int fps = DEFAULT_FRAME_RATE;
 	u32 quota, rate, v_total, src_h, xres = 0;
-	bool is_fbc = false;
+	struct mdss_mdp_img_rect src, dst;
+    bool is_fbc = false;
 	struct mdss_mdp_prefill_params prefill_params;
 
 	if (!pipe || !perf || !pipe->mixer)
 		return -EINVAL;
 
 	mixer = pipe->mixer;
+    dst = pipe->dst;
+    src = pipe->src;
+
 	if (mixer->rotator_mode) {
 		v_total = pipe->flags & MDP_ROT_90 ? pipe->dst.w : pipe->dst.h;
 	} else if (mixer->type == MDSS_MDP_MIXER_TYPE_INTF) {
@@ -342,9 +346,10 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 	 * no need to account for these lines in MDP clock or request bus
 	 * bandwidth to fetch them.
 	 */
-	src_h = pipe->src.h >> pipe->vert_deci;
 
-	quota = fps * pipe->src.w * src_h;
+    src_h = src.h >> pipe->vert_deci;
+
+    quota = fps * src.w * src_h;
 
 	pr_debug("src(w,h)(%d,%d) dst(w,h)(%d,%d) dst_y=%d bpp=%d yuv=%d\n",
 		 pipe->src.w, src_h, pipe->dst.w, pipe->dst.h, pipe->dst.y,
@@ -362,9 +367,9 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 	else
 		quota *= pipe->src_fmt->bpp;
 
-	rate = pipe->dst.w;
-	if (src_h > pipe->dst.h)
-		rate = (rate * src_h) / pipe->dst.h;
+	rate = dst.w;
+	if (src_h > dst.h)
+		rate = (rate * src_h) / dst.h;
 
 	rate *= v_total * fps;
 	if (mixer->rotator_mode) {
@@ -372,11 +377,9 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 		quota *= 2; /* bus read + write */
 		perf->bw_overlap = quota;
 	} else
-		perf->bw_overlap = (src_h > pipe->dst.h) ?
-			(quota / pipe->dst.h) * v_total :
-			(quota / src_h) * v_total;
+        perf->bw_overlap = (quota / dst.h) * v_total;
 
-	perf->mdp_clk_rate = mdss_mdp_clk_fudge_factor(mixer, rate);
+    perf->mdp_clk_rate = mdss_mdp_clk_fudge_factor(mixer, rate);
 
 	prefill_params.smp_bytes = mdss_mdp_smp_get_size(pipe);
 	prefill_params.xres = xres;
