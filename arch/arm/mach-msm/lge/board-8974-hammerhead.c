@@ -101,6 +101,11 @@ extern int g_kcal_b;
 
 int kcal_set_values(int kcal_r, int kcal_g, int kcal_b)
 {
+	if (kcal_r < 0 || kcal_r > 255 ||
+	    kcal_g < 0 || kcal_g > 255 ||
+	    kcal_b < 0 || kcal_b > 255)
+		return -EINVAL;
+
 	g_kcal_r = kcal_r;
 	g_kcal_g = kcal_g;
 	g_kcal_b = kcal_b;
