@@ -1398,7 +1398,7 @@ void mdss_mdp_pp_argc(void)
 	pgc_config->flags |= MDP_PP_OPS_WRITE;
 	pgc_config->flags |= MDP_PP_OPS_ENABLE;
 
-	pr_info(">>>>> %s \n", __func__);
+	pr_debug(">>>>> %s\n", __func__);
 }
 
 
@@ -1433,23 +1433,19 @@ void mdss_mdp_pp_argc_kcal(int kr, int kg, int kb)
 	pgc_config = &mdss_pp_res->pgc_disp_cfg[disp_num];
 	pgc_config->flags |= MDP_PP_OPS_WRITE;
 	pgc_config->flags |= MDP_PP_OPS_ENABLE;
+
 	mdss_pp_res->pp_disp_flags[disp_num] |= PP_FLAGS_DIRTY_PGC;
 
-	pr_info(">>>>> %s \n", __func__);
+	pr_debug(">>>>> %s\n", __func__);
 }
 
-int update_preset_lcdc_lut(void)
+void update_preset_lcdc_lut(void)
 {
-	int ret = 0;
-
-	pr_info("update_preset_lcdc_lut red=[%d], green=[%d], blue=[%d]\n", g_kcal_r, g_kcal_g, g_kcal_b);
-
-	mdss_mdp_pp_argc_kcal(g_kcal_r,g_kcal_g,g_kcal_b);
-
-	if (ret)
-		pr_err("%s: failed to set lut! %d\n", __func__, ret);
-
-	return ret;
+	if (g_kcal_r != 255 || g_kcal_g != 255 || g_kcal_b != 255) {
+		mdss_mdp_pp_argc_kcal(g_kcal_r, g_kcal_g, g_kcal_b);
+		pr_debug("%s: red=%d, green=%d, blue=%d\n",
+			 __func__, g_kcal_r, g_kcal_g, g_kcal_b);
+	}
 }
 #endif
 
