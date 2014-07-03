@@ -2581,6 +2581,7 @@ static ssize_t _ft_hang_intr_status_store(struct device *dev,
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct adreno_device *adreno_dev;
 	int ret;
+    new_setting = 0;
 	if (device == NULL)
 		return 0;
 	adreno_dev = ADRENO_DEVICE(device);
