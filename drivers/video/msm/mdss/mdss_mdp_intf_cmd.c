@@ -606,9 +606,10 @@ int mdss_mdp_cmd_kickoff(struct mdss_mdp_ctl *ctl, void *arg)
 	spin_unlock_irqrestore(&ctx->clk_lock, flags);
 	trace_mdp_cmd_kickoff(ctl->num, ctx->koff_cnt);
 
-	mdss_mdp_cmd_set_partial_roi(ctl);
-
 	mdss_mdp_cmd_clk_on(ctx);
+
+	mutex_lock(&ctx->clk_mtx);
+	mdss_mdp_cmd_set_partial_roi(ctl);
 
 	/*
 	 * tx dcs command if had any
@@ -617,6 +618,7 @@ int mdss_mdp_cmd_kickoff(struct mdss_mdp_ctl *ctl, void *arg)
 	INIT_COMPLETION(ctx->pp_comp);
 	mdss_mdp_irq_enable(MDSS_MDP_IRQ_PING_PONG_COMP, ctx->pp_num);
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_START, 1);
+	mutex_unlock(&ctx->clk_mtx);
 	mdss_mdp_ctl_perf_set_transaction_status(ctl,
 		PERF_SW_COMMIT_STATE, PERF_STATUS_DONE);
 	mb();
