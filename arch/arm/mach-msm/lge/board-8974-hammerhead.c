@@ -193,7 +193,6 @@ void __init msm8974_add_drivers(void)
 #else
 	msm_thermal_device_init();
 #endif
-	lge_add_persistent_device();
 #if defined (CONFIG_BCMDHD) || defined (CONFIG_BCMDHD_MODULE)
 	init_bcm_wifi();
 #endif
@@ -265,6 +264,9 @@ void __init msm8974_init(void)
 	regulator_has_full_constraints();
 	board_dt_populate(adata);
 	msm8974_add_drivers();
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	lge_config_ramconsole();
+#endif
 }
 
 void __init msm8974_init_very_early(void)
