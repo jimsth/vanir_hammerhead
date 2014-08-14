@@ -124,6 +124,11 @@ static int boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 static u64 boostpulse_endtime;
 
 /*
+ * Making sure cpufreq stays low when it needs to stay low
+ */
+#define DOWN_LOW_LOAD_THRESHOLD 5
+
+/*
  * Max additional time to wait in idle, beyond timer_rate, at speeds above
  * minimum before wakeup to reduce speed, or -1 if unnecessary.
  */
@@ -466,6 +471,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 			if (new_freq < boosted_freq)
 				new_freq = boosted_freq;
 		}
+    } else if (cpu_load <= DOWN_LOW_LOAD_THRESHOLD) {
+        new_freq = pcpu->policy->cpuinfo.min_freq;
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq, cpu_load);
 
