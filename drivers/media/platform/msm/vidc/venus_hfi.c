@@ -30,6 +30,7 @@
 #include "vidc_hfi_io.h"
 #include "msm_vidc_debug.h"
 #include <linux/iopoll.h>
+#include <media/msm_vidc.h>
 
 #define FIRMWARE_SIZE			0X00A00000
 #define REG_ADDR_OFFSET_BITMASK	0x000FFFFF
@@ -1268,16 +1269,19 @@ static inline int venus_hfi_power_on(struct venus_hfi_device *device)
 		dprintk(VIDC_ERR, "Failed to reset venus core");
 		goto err_reset_core;
 	}
-	/*
-	 * write_lock is already acquired at this point, so to avoid
-	 * recursive lock in cmdq_write function, call nolock version
-	 * of alloc_ocmem
-	 */
-	WARN_ON(!mutex_is_locked(&device->write_lock));
-	rc = __alloc_ocmem(device, device->ocmem_size, false);
-	if (rc) {
-		dprintk(VIDC_ERR, "Failed to allocate OCMEM");
-		goto err_alloc_ocmem;
+
+	if (!msm_vidc_instance_open()) {
+		/*
+		 * write_lock is already acquired at this point, so to avoid
+		 * recursive lock in cmdq_write function, call nolock version
+		 * of alloc_ocmem
+		 */
+		WARN_ON(!mutex_is_locked(&device->write_lock));
+		rc = __alloc_ocmem(device, device->ocmem_size, false);
+		if (rc) {
+			dprintk(VIDC_ERR, "Failed to allocate OCMEM");
+			goto err_alloc_ocmem;
+		}
 	}
 	device->power_enabled = 1;
 	++device->pwr_cnt;
@@ -2793,12 +2797,14 @@ static void venus_hfi_pm_hndlr(struct work_struct *work)
 	}
 	mutex_unlock(&device->clk_pwr_lock);
 
-	rc = venus_hfi_unset_free_ocmem(device);
-	if (rc) {
-		dprintk(VIDC_ERR,
-				"Failed to unset and free OCMEM for PC %d\n",
-				rc);
-		return;
+	if (!msm_vidc_instance_open()) {
+		rc = venus_hfi_unset_free_ocmem(device);
+		if (rc) {
+			dprintk(VIDC_ERR,
+					"Failed to unset and free OCMEM for PC %d\n",
+					rc);
+			return;
+		}
 	}
 
 	rc = venus_hfi_prepare_pc(device);
