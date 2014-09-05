@@ -1656,6 +1656,7 @@ static const struct snd_kcontrol_new taiko_2_x_analog_gain_controls[] = {
 static int taiko_hph_impedance_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
+#if !defined(CONFIG_MACH_LGE)
 	uint32_t zl, zr;
 	bool hphr;
 	struct soc_multi_mixer_control *mc;
@@ -1668,6 +1669,9 @@ static int taiko_hph_impedance_get(struct snd_kcontrol *kcontrol,
 	wcd9xxx_mbhc_get_impedance(&priv->mbhc, &zl, &zr);
 	pr_debug("%s: zl %u, zr %u\n", __func__, zl, zr);
 	ucontrol->value.integer.value[0] = hphr ? zr : zl;
+#else
+	ucontrol->value.integer.value[0] = 0;
+#endif
 
 	return 0;
 }
@@ -3358,8 +3362,10 @@ static int taiko_hphl_dac_event(struct snd_soc_dapm_widget *w,
 {
 	struct snd_soc_codec *codec = w->codec;
 	struct taiko_priv *taiko_p = snd_soc_codec_get_drvdata(codec);
+#ifndef CONFIG_MACH_LGE
 	uint32_t impedl, impedr;
 	int ret = 0;
+#endif
 
 	pr_debug("%s %s %d\n", __func__, w->name, event);
 
@@ -3379,6 +3385,9 @@ static int taiko_hphl_dac_event(struct snd_soc_dapm_widget *w,
                         WCD9XXX_CLSAB_REQ_ENABLE);
         }
 
+#ifdef CONFIG_MACH_LGE
+		wcd9xxx_clsh_imped_config(codec, 0);
+#else
 		ret = wcd9xxx_mbhc_get_impedance(&taiko_p->mbhc,
 					&impedl, &impedr);
 		if (!ret)
@@ -3386,6 +3395,7 @@ static int taiko_hphl_dac_event(struct snd_soc_dapm_widget *w,
 		else
 			dev_err(codec->dev, "Failed to get mbhc impedance %d\n",
 						ret);
+#endif
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		snd_soc_update_bits(codec, TAIKO_A_CDC_RX1_B3_CTL, 0xBC, 0x94);
