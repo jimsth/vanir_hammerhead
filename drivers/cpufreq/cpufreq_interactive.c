@@ -154,8 +154,6 @@ static unsigned int up_threshold_any_cpu_load;
 static unsigned int sync_freq;
 static unsigned int up_threshold_any_cpu_freq;
 
-#define DOWN_LOW_LOAD_THRESHOLD 5
-
 static void cpufreq_interactive_timer_resched(
 	struct cpufreq_interactive_cpuinfo *pcpu)
 {
@@ -468,9 +466,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 			if (new_freq < boosted_freq)
 				new_freq = boosted_freq;
 		}
-    }
-    else if (cpu_load <= DOWN_LOW_LOAD_THRESHOLD) {
-        new_freq = pcpu->policy->cpuinfo.min_freq;
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
 
